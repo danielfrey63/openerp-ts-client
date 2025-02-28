@@ -1,0 +1,8 @@
+# This is an example .npmrc file for your Vercel project
+# Add this file to the root of your openerp-scanner project
+
+# Use the public npm registry for most packages
+registry=https://registry.npmjs.org/
+
+# Use a direct GitHub download URL for your package
+@danielfrey63:openerp-ts-client=https://github.com/danielfrey63/openerp-ts-client/releases/download/v1.0.7/danielfrey63-openerp-ts-client-1.0.7.tgz
