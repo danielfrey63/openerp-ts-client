@@ -12,7 +12,8 @@
     "build": "tsc",
     "start": "ts-node src/example.ts",
     "test": "jest",
-    "prepare": "npm run build"
+    "prepare": "npm run build",
+    "deploy": "npm version patch && npm run build && npm pack && npm publish"
   },
   "publishConfig": {
     "access": "public"
