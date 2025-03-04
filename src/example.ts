@@ -174,17 +174,36 @@ async function main() {
           }
 
           try {
-            await client.updateOrderLineProduct(
-              orderChoice.order,
-              selectedLine.id,
-              productChoice.newProductCode
-            );
-            console.log('Product updated successfully!');
+            // Get details of the new product before updating
+            const newProductDetails = await client.getProductDetailsByCode(productChoice.newProductCode);
+            
+            if (!newProductDetails) {
+              console.log(`Product with code ${productChoice.newProductCode} not found.`);
+              continue;
+            }
+            
+            // Display the product that will be used for the update in green color
+            console.log(`  New product details: \x1b[32m[${newProductDetails.code}] ${newProductDetails.name} - CHF ${newProductDetails.price.toFixed(2)}\x1b[0m`);
+            
+            const confirmUpdate = await inquirer.prompt([
+              {
+                type: 'confirm',
+                name: 'proceed',
+                message: 'Do you want to proceed with the update?',
+                default: true
+              }
+            ]);
+            
+            if (!confirmUpdate.proceed) {
+              console.log('Update cancelled.');
+              continue;
+            }
+            
+            // Proceed with the update
+            await client.updateOrderLineProduct(orderChoice.order, selectedLine.id, productChoice.newProductCode);
+            console.log(`Successfully updated order line with new product: ${newProductDetails.name}`);
           } catch (error) {
-            console.error('Error updating product:');
-            console.error(error instanceof Error ? error.message : 'Unknown error');
-            console.log('Press Enter to continue...');
-            await inquirer.prompt([{ type: 'input', name: 'continue', message: '' }]);
+            console.error('Error updating order line:', error instanceof Error ? error.message : error);
           }
         }
       }

@@ -33,6 +33,14 @@ export interface OrderLine {
   price_unit: number;
 }
 
+export interface ProductDetails {
+  id: number;
+  code: string;
+  name: string;
+  name_template: string;
+  price: number;
+}
+
 export class OpenERPClient {
   private xmlRpcClient: AxiosInstance;
   public session: Session | null = null;
@@ -169,6 +177,67 @@ export class OpenERPClient {
     } catch (error) {
       throw new Error(`Failed to update order line: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+  }
+
+  async getProductDetailsByCode(productCode: string): Promise<ProductDetails | null> {
+    if (!this.session) {
+      throw new Error('Not authenticated');
+    }
+
+    const productIds = await this.xmlRpc('object', 'execute', [
+      this.session.db,
+      this.session.uid,
+      this.session.id,
+      'product.product',
+      'search',
+      [['default_code', '=', productCode]]
+    ]);
+
+    if (!productIds || !productIds.array || !productIds.array[0] || 
+        !productIds.array[0].data || !productIds.array[0].data[0] || 
+        !productIds.array[0].data[0].value || productIds.array[0].data[0].value.length === 0) {
+      return null;
+    }
+
+    const productId = Number(productIds.array[0].data[0].value[0].int[0]);
+
+    const productDetails = await this.xmlRpc('object', 'execute', [
+      this.session.db,
+      this.session.uid,
+      this.session.id,
+      'product.product',
+      'read',
+      [productId],
+      ['id', 'name', 'name_template', 'default_code', 'list_price']
+    ]);
+
+    if (!productDetails || !productDetails.array || !productDetails.array[0] || 
+        !productDetails.array[0].data || !productDetails.array[0].data[0] || 
+        !productDetails.array[0].data[0].value || !productDetails.array[0].data[0].value[0] ||
+        !productDetails.array[0].data[0].value[0].struct || !productDetails.array[0].data[0].value[0].struct[0] ||
+        !productDetails.array[0].data[0].value[0].struct[0].member) {
+      return null;
+    }
+
+    const productProps = productDetails.array[0].data[0].value[0].struct[0].member
+      .reduce((acc: any, m: any) => {
+        const key = m.name[0];
+        const value = m.value[0];
+        
+        // Handle other properties
+        acc[key] = value.string ? value.string[0] : 
+                  value.int ? Number(value.int[0]) : 
+                  value.double ? Number(value.double[0]) : null;
+        return acc;
+      }, {});
+
+    return {
+      id: productProps.id,
+      code: productProps.default_code,
+      name: productProps.name_template || productProps.name,
+      name_template: productProps.name_template,
+      price: productProps.list_price
+    };
   }
 
   private async parseXmlResponse(xmlString: string) {
