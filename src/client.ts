@@ -31,34 +31,24 @@ export interface OrderLine {
 }
 
 export class OpenERPClient {
-  private dbClient: AxiosInstance;
-  private commonClient: AxiosInstance;
-  private objectClient: AxiosInstance;
+  private xmlRpcClient: AxiosInstance;
   public session: Session | null = null;
 
   constructor(config: OpenERPConfig) {
     const baseUrl = config.baseUrl.replace(/\/+$/, '');
     
-    const axiosConfig = {
+    this.xmlRpcClient = axios.create({
+      baseURL: baseUrl,
       headers: {
         'Content-Type': 'text/xml',
         'Accept': 'text/xml'
       },
       validateStatus: () => true
-    };
+    });
+  }
 
-    this.dbClient = axios.create({
-      baseURL: `${baseUrl}/xmlrpc/db`,
-      ...axiosConfig
-    });
-    this.commonClient = axios.create({
-      baseURL: `${baseUrl}/xmlrpc/common`,
-      ...axiosConfig
-    });
-    this.objectClient = axios.create({
-      baseURL: `${baseUrl}/xmlrpc/object`,
-      ...axiosConfig
-    });
+  private getEndpoint(service: 'db'|'common'|'object'): string {
+    return `/xmlrpc/${service}`;
 }
 
   private createXmlRpcRequest(method: string, params: any[] = []): string {
@@ -96,7 +86,7 @@ export class OpenERPClient {
     }
   
     // First, search for the product with the given code
-    const productIds = await this.xmlRpc(this.objectClient, 'execute', [
+    const productIds = await this.xmlRpc('object', 'execute', [
       this.session.db,
       this.session.uid,
       this.session.id,
@@ -112,7 +102,7 @@ export class OpenERPClient {
     const newProductId = Number(productIds.array[0].data[0].value[0].int[0]);
   
     // Get product details to construct the new name
-    const productDetails = await this.xmlRpc(this.objectClient, 'execute', [
+    const productDetails = await this.xmlRpc('object', 'execute', [
       this.session.db,
       this.session.uid,
       this.session.id,
@@ -131,7 +121,7 @@ export class OpenERPClient {
     const newName = `[${productName.default_code}] ${productName.name}`;
 
     // Search for the specific order line using both order_id and product_id
-    const lineIds = await this.xmlRpc(this.objectClient, 'execute', [
+    const lineIds = await this.xmlRpc('object', 'execute', [
       this.session.db,
       this.session.uid,
       this.session.id,
@@ -149,7 +139,7 @@ export class OpenERPClient {
     }
 
     // Single update with both product and name
-    await this.xmlRpc(this.objectClient, 'execute', [
+    await this.xmlRpc('object', 'execute', [
       this.session.db,
       this.session.uid,
       this.session.id,
@@ -171,14 +161,14 @@ export class OpenERPClient {
     return result.methodResponse.params[0].param[0].value[0];
   }
 
-  private async xmlRpc(client: AxiosInstance, method: string, params: any[] = []) {
+  private async xmlRpc(service: 'db'|'common'|'object', method: string, params: any[] = []) {
     const xmlBody = this.createXmlRpcRequest(method, params);
-    const response = await client.post('', xmlBody);
+    const response = await this.xmlRpcClient.post(this.getEndpoint(service), xmlBody);
     return this.parseXmlResponse(response.data);
   }
 
   async listDatabases(): Promise<string[]> {
-    const response = await this.xmlRpc(this.dbClient, 'list');
+    const response = await this.xmlRpc('db', 'list');
     // Handle both array and string response formats
     if (typeof response === 'string') {
       return [response];
@@ -193,7 +183,7 @@ export class OpenERPClient {
   }
 
   async login(credentials: LoginCredentials): Promise<Session> {
-    const uid = await this.xmlRpc(this.commonClient, 'login', [
+    const uid = await this.xmlRpc('common', 'login', [
       credentials.db,
       credentials.username,
       credentials.password
@@ -218,7 +208,7 @@ export class OpenERPClient {
       throw new Error('Not authenticated');
     }
 
-    const orderIdsResponse = await this.xmlRpc(this.objectClient, 'execute', [
+    const orderIdsResponse = await this.xmlRpc('object', 'execute', [
       this.session.db,
       this.session.uid,
       this.session.id,
@@ -235,7 +225,7 @@ export class OpenERPClient {
       return [];
     }
 
-    const ordersResponse = await this.xmlRpc(this.objectClient, 'execute', [
+    const ordersResponse = await this.xmlRpc('object', 'execute', [
       this.session.db,
       this.session.uid,
       this.session.id,
@@ -267,7 +257,7 @@ export class OpenERPClient {
       throw new Error('Not authenticated');
     }
 
-    const lineIdsResponse = await this.xmlRpc(this.objectClient, 'execute', [
+    const lineIdsResponse = await this.xmlRpc('object', 'execute', [
       this.session.db,
       this.session.uid,
       this.session.id,
@@ -284,7 +274,7 @@ export class OpenERPClient {
       return [];
     }
 
-    const linesResponse = await this.xmlRpc(this.objectClient, 'execute', [
+    const linesResponse = await this.xmlRpc('object', 'execute', [
       this.session.db,
       this.session.uid,
       this.session.id,
