@@ -108,23 +108,47 @@ async function main() {
           }
 
           const orderLines = await client.getSaleOrderLines(orderChoice.order);
-          console.log('\nOrder Lines:');
-          console.log('-------------------');
-          orderLines.forEach((line, index) => {
-            console.log(`${index + 1}. ${line.product_uom_qty}x ${line.product_id[1]} - CHF ${line.price_unit.toFixed(2)}`);
+          
+          // Find the maximum length of each column for alignment
+          const maxQtyLength = Math.max(...orderLines.map(line => `${line.product_uom_qty}x`.length));
+          
+          // Extract default_code and name_template from product_id[1]
+          const productDetails = orderLines.map(line => {
+            const productIdStr = line.product_id[1];
+            const match = productIdStr.match(/\[(.*?)\] (.*)/);
+            return {
+              code: match ? match[1] : '',
+              name: match ? match[2] : productIdStr
+            };
           });
-          console.log('-------------------');
-
+          
+          const maxCodeLength = Math.max(...productDetails.map(p => p.code.length));
+          const maxNameLength = Math.max(...productDetails.map(p => p.name.length));
+          
           const lineChoice = await inquirer.prompt([
             {
               type: 'list',
               name: 'line',
               message: 'Select a line to modify product:',
               choices: [
-                ...orderLines.map((line, index) => ({
-                  name: `${line.product_uom_qty}x ${line.product_id[1]}`,
-                  value: index
-                })),
+                ...orderLines.map((line, index) => {
+                  const qtyStr = `${line.product_uom_qty}x`.padEnd(maxQtyLength + 2);
+                  
+                  // Extract default_code and name_template
+                  const productIdStr = line.product_id[1];
+                  const match = productIdStr.match(/\[(.*?)\] (.*)/);
+                  const code = match ? match[1] : '';
+                  const name = match ? match[2] : productIdStr;
+                  
+                  const codeStr = `[${code}]`.padEnd(maxCodeLength + 4);
+                  const nameStr = name.padEnd(maxNameLength + 2);
+                  const priceStr = `CHF ${line.price_unit.toFixed(2)}`;
+                  
+                  return {
+                    name: `${qtyStr} ${codeStr} ${nameStr} ${priceStr}`,
+                    value: index
+                  };
+                }),
                 { name: 'Back', value: 'back' }
               ]
             }
