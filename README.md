@@ -35,7 +35,8 @@ const partners = await client.search('res.partner', [['is_company', '=', true]])
 | `login`                  | Authenticates with the OpenERP server                         | `credentials: LoginCredentials` - Object containing db, username, and password                                                                               | `Promise<Session>`     |
 | `getOpenSaleOrders`      | Retrieves all open sales orders (draft, sent, or in progress) | None                                                                                                                                                           | `Promise<SaleOrder[]>` |
 | `getSaleOrderLines`      | Retrieves all order lines for a specific sales order          | `orderId: number` - ID of the sales order                                                                                                                    | `Promise<OrderLine[]>` |
-| `updateOrderLineProduct` | Updates a product in a sales order line                       | `orderId: number` - ID of the sales order`<br>oldProductId: number` - ID of the product to replace`<br>newProductCode: string` - Code of the new product | `Promise<void>`        |
+| `updateOrderLineProduct` | Updates a product in a sales order line                       | `orderId: number` - ID of the sales order`<br>`orderLineId: number` - ID of the order line to update`<br>`newProductCode: string` - Code of the new product | `Promise<void>`        |
+| `getProductDetailsByCode` | Retrieves detailed information about a product by its code    | `productCode: string` - Code of the product to retrieve                                                                                                      | `Promise<ProductDetails \| null>` |
 
 ### Data Types
 
@@ -83,8 +84,22 @@ interface SaleOrder {
 
 ```typescript
 interface OrderLine {
+  id: number;
   product_id: [number, string];
   product_uom_qty: number;
+  price_unit: number;
+}
+```
+
+#### ProductDetails
+
+```typescript
+interface ProductDetails {
+  id: number;
+  code: string;
+  name: string;
+  name_template: string;
+  price: number;
 }
 ```
 
