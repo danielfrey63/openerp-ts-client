@@ -26,8 +26,11 @@ export interface SaleOrder {
 }
 
 export interface OrderLine {
+  id: number;
   product_id: [number, string];
   product_uom_qty: number;
+  name: string;
+  price_unit: number;
 }
 
 export class OpenERPClient {
@@ -80,11 +83,11 @@ export class OpenERPClient {
     return `<value><string>${String(param)}</string></value>`;
   }
 
-  async updateOrderLineProduct(orderId: number, oldProductId: number, newProductCode: string): Promise<void> {
+  async updateOrderLineProduct(orderId: number, orderLineId: number, newProductCode: string): Promise<void> {
     if (!this.session) {
       throw new Error('Not authenticated');
     }
-  
+    
     // First, search for the product with the given code
     const productIds = await this.xmlRpc('object', 'execute', [
       this.session.db,
@@ -95,13 +98,16 @@ export class OpenERPClient {
       [['default_code', '=', newProductCode]]
     ]);
   
-    if (!productIds || productIds.array[0].data[0].value.length === 0) {
-      throw new Error('Product not found');
+    // More robust checking of the response structure
+    if (!productIds || !productIds.array || !productIds.array[0] || 
+        !productIds.array[0].data || !productIds.array[0].data[0] || 
+        !productIds.array[0].data[0].value || productIds.array[0].data[0].value.length === 0) {
+      throw new Error(`Product with code ${newProductCode} not found`);
     }
   
     const newProductId = Number(productIds.array[0].data[0].value[0].int[0]);
   
-    // Get product details to construct the new name
+    // Get product details to construct the new name and get other product properties
     const productDetails = await this.xmlRpc('object', 'execute', [
       this.session.db,
       this.session.uid,
@@ -109,48 +115,60 @@ export class OpenERPClient {
       'product.product',
       'read',
       [newProductId],
-      ['name', 'default_code']
+      ['name', 'name_template', 'default_code', 'list_price']
     ]);
 
-    const productName = productDetails.array[0].data[0].value[0].struct[0].member
+    // More robust checking of the product details response
+    if (!productDetails || !productDetails.array || !productDetails.array[0] || 
+        !productDetails.array[0].data || !productDetails.array[0].data[0] || 
+        !productDetails.array[0].data[0].value || !productDetails.array[0].data[0].value[0] ||
+        !productDetails.array[0].data[0].value[0].struct || !productDetails.array[0].data[0].value[0].struct[0] ||
+        !productDetails.array[0].data[0].value[0].struct[0].member) {
+      throw new Error(`Failed to retrieve details for product with code ${newProductCode}`);
+    }
+
+    // Extract all product properties
+    const productProps = productDetails.array[0].data[0].value[0].struct[0].member
       .reduce((acc: any, m: any) => {
-        acc[m.name[0]] = m.value[0].string ? m.value[0].string[0] : '';
+        const key = m.name[0];
+        const value = m.value[0];
+        
+        // Handle other properties
+        acc[key] = value.string ? value.string[0] : 
+                  value.int ? Number(value.int[0]) : 
+                  value.double ? Number(value.double[0]) : null;
         return acc;
       }, {});
 
-    const newName = `[${productName.default_code}] ${productName.name}`;
+    // Use name_template if available, otherwise fall back to name
+    const productName = productProps.name_template || productProps.name;
+    const newName = `[${productProps.default_code}] ${productName}`;
 
-    // Search for the specific order line using both order_id and product_id
-    const lineIds = await this.xmlRpc('object', 'execute', [
-      this.session.db,
-      this.session.uid,
-      this.session.id,
-      'sale.order.line',
-      'search',
-      [
-        ['order_id', '=', orderId], 
-        ['product_id', '=', oldProductId]
-      ],
-      1  // Limit to 1 result
-    ]);
-
-    if (!lineIds || lineIds.array[0].data[0].value.length === 0) {
-      throw new Error('Order line not found');
-    }
-
-    // Single update with both product and name
-    await this.xmlRpc('object', 'execute', [
-      this.session.db,
-      this.session.uid,
-      this.session.id,
-      'sale.order.line',
-      'write',
-      [Number(lineIds.array[0].data[0].value[0].int[0])],
-      { 
+    // Update the order line directly using the provided ID
+    try {
+      // This is a single transaction that updates both product_id and name atomically
+      const updateData: any = {
         'product_id': newProductId,
         'name': newName
+      };
+      
+      // Only include price if it exists in the product details
+      if (productProps.list_price !== undefined) {
+        updateData.price_unit = productProps.list_price;
       }
-    ]);
+      
+      await this.xmlRpc('object', 'execute', [
+        this.session.db,
+        this.session.uid,
+        this.session.id,
+        'sale.order.line',
+        'write',
+        [orderLineId],
+        updateData
+      ]);
+    } catch (error) {
+      throw new Error(`Failed to update order line: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   private async parseXmlResponse(xmlString: string) {
@@ -281,7 +299,7 @@ export class OpenERPClient {
       'sale.order.line',
       'read',
       lineIds,
-      ['product_id', 'product_uom_qty']
+      ['id', 'product_id', 'product_uom_qty', 'name', 'price_unit']
     ]);
 
     const lines = linesResponse.array[0].data[0].value.map((item: any) => {
@@ -291,6 +309,8 @@ export class OpenERPClient {
         const key = member.name[0];
         const value = member.value[0];
         if (key === 'product_uom_qty' && value.double) {
+          line[key] = Number(value.double[0]);
+        } else if (key === 'price_unit' && value.double) {
           line[key] = Number(value.double[0]);
         } else {
           line[key] = value.int ? Number(value.int[0]) : 

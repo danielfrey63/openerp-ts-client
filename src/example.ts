@@ -111,7 +111,7 @@ async function main() {
           console.log('\nOrder Lines:');
           console.log('-------------------');
           orderLines.forEach((line, index) => {
-            console.log(`${index + 1}. ${line.product_uom_qty}x ${line.product_id[1]}`);
+            console.log(`${index + 1}. ${line.product_uom_qty}x ${line.product_id[1]} - CHF ${line.price_unit.toFixed(2)}`);
           });
           console.log('-------------------');
 
@@ -134,6 +134,9 @@ async function main() {
             continue; // Goes back to SO list
           }
 
+          // Store the selected order line for easier reference
+          const selectedLine = orderLines[lineChoice.line];
+
           const productChoice = await inquirer.prompt([
             {
               type: 'input',
@@ -146,12 +149,19 @@ async function main() {
             continue; // Goes back to SO list
           }
 
-          await client.updateOrderLineProduct(
-            orderChoice.order,
-            orderLines[lineChoice.line].product_id[0],
-            productChoice.newProductCode
-          );
-          console.log('Product updated successfully!');
+          try {
+            await client.updateOrderLineProduct(
+              orderChoice.order,
+              selectedLine.id,
+              productChoice.newProductCode
+            );
+            console.log('Product updated successfully!');
+          } catch (error) {
+            console.error('Error updating product:');
+            console.error(error instanceof Error ? error.message : 'Unknown error');
+            console.log('Press Enter to continue...');
+            await inquirer.prompt([{ type: 'input', name: 'continue', message: '' }]);
+          }
         }
       }
     }
